@@ -21,14 +21,14 @@ type CreateSubscriptionRequest struct {
 	ServiceName string `json:"service_name" binding:"required"`
 	Price       int    `json:"price" binding:"required,min=0"`
 	UserID      string `json:"user_id" binding:"required,uuid"`
-	StartDate   string `json:"start_date" binding:"required,datetime=01-2006"`
-	EndDate     string `json:"end_date,omitempty" binding:"omitempty,datetime=01-2006"`
+	StartDate   string `json:"start_date" binding:"required,datetime=2006-01-02"`
+	EndDate     string `json:"end_date,omitempty" binding:"omitempty,datetime=2006-01-02"`
 }
 
 type UpdateSubscriptionRequest struct {
 	ServiceName *string `json:"service_name,omitempty"`
 	Price       *int    `json:"price,omitempty" binding:"omitempty,min=0"`
-	EndDate     *string `json:"end_date,omitempty" binding:"omitempty,datetime=01-2006"`
+	EndDate     *string `json:"end_date,omitempty" binding:"omitempty,datetime=2006-01-02"`
 }
 
 type SubscriptionFilter struct {
@@ -43,8 +43,8 @@ type SubscriptionFilter struct {
 type AggregateRequest struct {
 	UserID      *string `form:"user_id" binding:"omitempty,uuid"`
 	ServiceName *string `form:"service_name"`
-	StartDate   string  `form:"start_date" binding:"required,datetime=01-2006"`
-	EndDate     string  `form:"end_date" binding:"required,datetime=01-2006"`
+	StartDate   string  `form:"start_date" binding:"required,datetime=2006-01-02"`
+	EndDate     string  `form:"end_date" binding:"required,datetime=2006-01-02"`
 }
 
 type AggregateResponse struct {
@@ -57,7 +57,7 @@ func (r *CreateSubscriptionRequest) ToSubscription() (*Subscription, error) {
 		return nil, err
 	}
 
-	startDate, err := time.Parse("01-2006", r.StartDate)
+	startDate, err := time.Parse("2006-01-02", r.StartDate)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (r *CreateSubscriptionRequest) ToSubscription() (*Subscription, error) {
 	}
 
 	if r.EndDate != "" {
-		endDate, err := time.Parse("01-2006", r.EndDate)
+		endDate, err := time.Parse("2006-01-02", r.EndDate)
 		if err != nil {
 			return nil, err
 		}

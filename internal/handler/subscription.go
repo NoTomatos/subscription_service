@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -23,14 +25,22 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	var req model.CreateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logrus.WithError(err).Warn("Invalid request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
 	sub, err := h.service.Create(&req)
 	if err != nil {
 		logrus.WithError(err).Error("Failed to create subscription")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		// Проверяем тип ошибки
+		var validationErr *service.ValidationError
+		if errors.As(err, &validationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create subscription"})
 		return
 	}
 
@@ -43,12 +53,20 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	sub, err := h.service.GetByID(id)
 	if err != nil {
 		logrus.WithError(err).WithField("id", id).Error("Failed to get subscription")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		// Проверяем, является ли ошибка ошибкой валидации UUID
+		var validationErr *service.ValidationError
+		if errors.As(err, &validationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription"})
 		return
 	}
 
 	if sub == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
 		return
 	}
 
@@ -61,22 +79,40 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	var req model.UpdateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logrus.WithError(err).Warn("Invalid request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
 	err := h.service.Update(id, &req)
 	if err != nil {
-		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		logrus.WithError(err).WithField("id", id).Error("Failed to update subscription")
+
+		// Проверяем различные типы ошибок
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			return
+
+		case errors.Is(err, service.ErrNoUpdates):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+			return
+
+		default:
+			var validationErr *service.ValidationError
+			if errors.As(err, &validationErr) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription"})
 			return
 		}
-		logrus.WithError(err).WithField("id", id).Error("Failed to update subscription")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "subscription updated successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Subscription updated successfully",
+		"id":      id,
+	})
 }
 
 func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
@@ -84,16 +120,30 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 
 	err := h.service.Delete(id)
 	if err != nil {
-		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		logrus.WithError(err).WithField("id", id).Error("Failed to delete subscription")
+
+		// Проверяем различные типы ошибок
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			return
+
+		default:
+			var validationErr *service.ValidationError
+			if errors.As(err, &validationErr) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscription"})
 			return
 		}
-		logrus.WithError(err).WithField("id", id).Error("Failed to delete subscription")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "subscription deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Subscription deleted successfully",
+		"id":      id,
+	})
 }
 
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
@@ -102,20 +152,31 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
+	// Парсим limit с проверкой
 	limit := 10
 	if l := c.Query("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
 			limit = parsed
+		} else if err != nil {
+			logrus.WithField("limit", l).Warn("Invalid limit parameter")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
+			return
 		}
 	}
 
+	// Парсим offset с проверкой
 	offset := 0
 	if o := c.Query("offset"); o != "" {
 		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
 			offset = parsed
+		} else if err != nil {
+			logrus.WithField("offset", o).Warn("Invalid offset parameter")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid offset parameter"})
+			return
 		}
 	}
 
+	// Преобразуем пустые строки в nil
 	var userIDPtr, serviceNamePtr, startDatePtr, endDatePtr *string
 	if userID != "" {
 		userIDPtr = &userID
@@ -133,25 +194,49 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	subscriptions, err := h.service.List(userIDPtr, serviceNamePtr, startDatePtr, endDatePtr, limit, offset)
 	if err != nil {
 		logrus.WithError(err).Error("Failed to list subscriptions")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		var validationErr *service.ValidationError
+		if errors.As(err, &validationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list subscriptions"})
 		return
 	}
 
-	c.JSON(http.StatusOK, subscriptions)
+	// Возвращаем пустой массив вместо null, если нет результатов
+	if subscriptions == nil {
+		subscriptions = []*model.Subscription{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":   subscriptions,
+		"limit":  limit,
+		"offset": offset,
+		"total":  len(subscriptions),
+	})
 }
 
 func (h *SubscriptionHandler) AggregateSubscriptions(c *gin.Context) {
 	var req model.AggregateRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		logrus.WithError(err).Warn("Invalid query parameters")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters: " + err.Error()})
 		return
 	}
 
 	result, err := h.service.Aggregate(&req)
 	if err != nil {
 		logrus.WithError(err).Error("Failed to aggregate subscriptions")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+		var validationErr *service.ValidationError
+		if errors.As(err, &validationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to aggregate subscriptions"})
 		return
 	}
 
