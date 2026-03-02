@@ -33,7 +33,6 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	if err != nil {
 		logrus.WithError(err).Error("Failed to create subscription")
 
-		// Проверяем тип ошибки
 		var validationErr *service.ValidationError
 		if errors.As(err, &validationErr) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
@@ -54,7 +53,6 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	if err != nil {
 		logrus.WithError(err).WithField("id", id).Error("Failed to get subscription")
 
-		// Проверяем, является ли ошибка ошибкой валидации UUID
 		var validationErr *service.ValidationError
 		if errors.As(err, &validationErr) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
@@ -87,7 +85,6 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	if err != nil {
 		logrus.WithError(err).WithField("id", id).Error("Failed to update subscription")
 
-		// Проверяем различные типы ошибок
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
@@ -122,7 +119,6 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	if err != nil {
 		logrus.WithError(err).WithField("id", id).Error("Failed to delete subscription")
 
-		// Проверяем различные типы ошибок
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
@@ -152,7 +148,6 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
-	// Парсим limit с проверкой
 	limit := 10
 	if l := c.Query("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
@@ -164,7 +159,6 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		}
 	}
 
-	// Парсим offset с проверкой
 	offset := 0
 	if o := c.Query("offset"); o != "" {
 		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
@@ -176,7 +170,6 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		}
 	}
 
-	// Преобразуем пустые строки в nil
 	var userIDPtr, serviceNamePtr, startDatePtr, endDatePtr *string
 	if userID != "" {
 		userIDPtr = &userID
@@ -205,7 +198,6 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		return
 	}
 
-	// Возвращаем пустой массив вместо null, если нет результатов
 	if subscriptions == nil {
 		subscriptions = []*model.Subscription{}
 	}
