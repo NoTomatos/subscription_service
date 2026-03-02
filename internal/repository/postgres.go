@@ -10,6 +10,8 @@ import (
 )
 
 func NewPostgresConnection(connString string) (*sql.DB, error) {
+	logrus.WithField("dsn", connString).Info("Connecting to database")
+
 	db, err := sql.Open("postgres", connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
@@ -19,13 +21,18 @@ func NewPostgresConnection(connString string) (*sql.DB, error) {
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	for i := 0; i < 3; i++ {
+		if err := db.Ping(); err != nil {
+			logrus.WithError(err).Warnf("Failed to ping database (attempt %d/3)", i+1)
+			time.Sleep(2 * time.Second)
+		} else {
+			logrus.Info("Successfully connected to PostgreSQL")
+			return db, nil
+		}
 	}
 
-	logrus.Info("Successfully connected to PostgreSQL")
-	return db, nil
+	db.Close()
+	return nil, fmt.Errorf("failed to ping database after 3 attempts")
 }
 
 func CloseConnection(db *sql.DB) {

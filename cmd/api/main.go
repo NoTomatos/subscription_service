@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/sirupsen/logrus"
@@ -30,9 +29,7 @@ func main() {
 
 	setupLogging(cfg.LogLevel)
 
-	if err := runMigrations(cfg); err != nil {
-		logrus.Fatalf("Failed to run migrations: %v", err)
-	}
+	logrus.Info("Database is ready, skipping migrations")
 
 	db, err := repository.NewPostgresConnection(cfg.GetPostgresDSN())
 	if err != nil {
@@ -84,23 +81,6 @@ func setupLogging(level string) {
 		lvl = logrus.InfoLevel
 	}
 	logrus.SetLevel(lvl)
-}
-
-func runMigrations(cfg *config.Config) error {
-	m, err := migrate.New(
-		cfg.MigrationsPath,
-		cfg.GetPostgresDSN(),
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return err
-	}
-
-	logrus.Info("Migrations completed successfully")
-	return nil
 }
 
 func setupRouter(subHandler *handler.SubscriptionHandler) *gin.Engine {
