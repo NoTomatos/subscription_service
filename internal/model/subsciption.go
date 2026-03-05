@@ -28,6 +28,8 @@ type CreateSubscriptionRequest struct {
 type UpdateSubscriptionRequest struct {
 	ServiceName *string `json:"service_name,omitempty"`
 	Price       *int    `json:"price,omitempty" binding:"omitempty,min=0"`
+	UserID      *string `json:"user_id,omitempty" binding:"omitempty,uuid"`
+	StartDate   *string `json:"start_date,omitempty" binding:"omitempty,datetime=2006-01-02"`
 	EndDate     *string `json:"end_date,omitempty" binding:"omitempty,datetime=2006-01-02"`
 }
 

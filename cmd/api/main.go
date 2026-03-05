@@ -15,6 +15,8 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
+	_ "subscription_service/docs"
+
 	"subscription_service/internal/config"
 	"subscription_service/internal/handler"
 	"subscription_service/internal/repository"

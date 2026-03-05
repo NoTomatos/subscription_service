@@ -130,6 +130,28 @@ func (s *subscriptionService) Update(id string, req *model.UpdateSubscriptionReq
 		updates["price"] = *req.Price
 	}
 
+	if req.UserID != nil {
+		userID, err := uuid.Parse(*req.UserID)
+		if err != nil {
+			return &ValidationError{
+				Field: "user_id",
+				Err:   fmt.Errorf("invalid UUID format: %w", err),
+			}
+		}
+		updates["user_id"] = userID
+	}
+
+	if req.StartDate != nil {
+		startDate, err := time.Parse("2006-01-02", *req.StartDate)
+		if err != nil {
+			return &ValidationError{
+				Field: "start_date",
+				Err:   fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err),
+			}
+		}
+		updates["start_date"] = startDate
+	}
+
 	if req.EndDate != nil {
 		if *req.EndDate == "" {
 			updates["end_date"] = nil

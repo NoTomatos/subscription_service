@@ -175,7 +175,7 @@ func (r *subscriptionRepository) List(filter model.SubscriptionFilter) ([]*model
 	}
 
 	if filter.EndDate != nil {
-		query += fmt.Sprintf(" AND start_date <= $%d", i) // ИСПРАВЛЕНО: было "AND (end_date IS NULL OR end_date <= $%d)"
+		query += fmt.Sprintf(" AND start_date <= $%d", i)
 		args = append(args, *filter.EndDate)
 		i++
 	}
@@ -219,9 +219,22 @@ func (r *subscriptionRepository) List(filter model.SubscriptionFilter) ([]*model
 
 func (r *subscriptionRepository) Aggregate(startDate, endDate time.Time, userID *uuid.UUID, serviceName *string) (int, error) {
 	query := `
-        SELECT COALESCE(SUM(price), 0)
+        SELECT COALESCE(SUM(
+            price * (
+                -- количество месяцев пересечения периода подписки с заданным периодом
+                EXTRACT(YEAR FROM age(
+                    LEAST(COALESCE(end_date, $2), $2),
+                    GREATEST(start_date, $1)
+                )) * 12 +
+                EXTRACT(MONTH FROM age(
+                    LEAST(COALESCE(end_date, $2), $2),
+                    GREATEST(start_date, $1)
+                ))
+            )
+        ), 0)
         FROM subscriptions
-        WHERE start_date BETWEEN $1 AND $2  -- ИСПРАВЛЕНО: теперь ищет подписки, начавшиеся в указанном периоде
+        WHERE start_date <= $2  -- подписка началась не позже конца периода
+          AND (end_date IS NULL OR end_date >= $1)  -- и не закончилась до начала периода
     `
 	args := []interface{}{startDate, endDate}
 	i := 3
@@ -233,7 +246,7 @@ func (r *subscriptionRepository) Aggregate(startDate, endDate time.Time, userID 
 	}
 
 	if serviceName != nil {
-		query += fmt.Sprintf(" AND service_name = $%d", i) // ИСПРАВЛЕНО: убрал ILIKE для точного совпадения
+		query += fmt.Sprintf(" AND service_name = $%d", i)
 		args = append(args, *serviceName)
 	}
 

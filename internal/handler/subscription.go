@@ -21,6 +21,16 @@ func NewSubscriptionHandler(service service.SubscriptionService) *SubscriptionHa
 	return &SubscriptionHandler{service: service}
 }
 
+// CreateSubscription
+// @Summary Создать новую подписку
+// @Tags subscriptions
+// @Accept json
+// @Produce json
+// @Param subscription body model.CreateSubscriptionRequest true "Данные подписки"
+// @Success 201 {object} model.Subscription
+// @Failure 400 {object} map[string]interface{} "Неверный формат запроса"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions [post]
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	var req model.CreateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,6 +56,16 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	c.JSON(http.StatusCreated, sub)
 }
 
+// GetSubscription
+// @Summary Получить подписку по ID
+// @Tags subscriptions
+// @Produce json
+// @Param id path string true "UUID подписки"
+// @Success 200 {object} model.Subscription
+// @Failure 400 {object} map[string]interface{} "Неверный формат ID"
+// @Failure 404 {object} map[string]interface{} "Подписка не найдена"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions/{id} [get]
 func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	id := c.Param("id")
 
@@ -59,18 +79,31 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription"})
-		return
-	}
+		var notFoundErr *service.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			c.JSON(http.StatusNotFound, gin.H{"error": notFoundErr.Error()})
+			return
+		}
 
-	if sub == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription"})
 		return
 	}
 
 	c.JSON(http.StatusOK, sub)
 }
 
+// UpdateSubscription
+// @Summary Обновить подписку
+// @Tags subscriptions
+// @Accept json
+// @Produce json
+// @Param id path string true "UUID подписки"
+// @Param subscription body model.UpdateSubscriptionRequest true "Данные для обновления"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "Неверный формат запроса"
+// @Failure 404 {object} map[string]interface{} "Подписка не найдена"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions/{id} [put]
 func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	id := c.Param("id")
 
@@ -101,6 +134,12 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 				return
 			}
 
+			var notFoundErr *service.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				c.JSON(http.StatusNotFound, gin.H{"error": notFoundErr.Error()})
+				return
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription"})
 			return
 		}
@@ -112,6 +151,16 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	})
 }
 
+// DeleteSubscription
+// @Summary Удалить подписку
+// @Tags subscriptions
+// @Produce json
+// @Param id path string true "UUID подписки"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "Неверный формат ID"
+// @Failure 404 {object} map[string]interface{} "Подписка не найдена"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions/{id} [delete]
 func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	id := c.Param("id")
 
@@ -119,21 +168,20 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	if err != nil {
 		logrus.WithError(err).WithField("id", id).Error("Failed to delete subscription")
 
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
-			return
-
-		default:
-			var validationErr *service.ValidationError
-			if errors.As(err, &validationErr) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
-				return
-			}
-
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscription"})
+		var validationErr *service.ValidationError
+		if errors.As(err, &validationErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
 			return
 		}
+
+		var notFoundErr *service.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			c.JSON(http.StatusNotFound, gin.H{"error": notFoundErr.Error()})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscription"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -142,6 +190,20 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	})
 }
 
+// ListSubscriptions
+// @Summary Список подписок с фильтрацией
+// @Tags subscriptions
+// @Produce json
+// @Param user_id query string false "Фильтр по ID пользователя"
+// @Param service_name query string false "Фильтр по названию сервиса"
+// @Param start_date query string false "Фильтр по дате начала (подписки, начавшиеся не раньше)"
+// @Param end_date query string false "Фильтр по дате начала (подписки, начавшиеся не позже)"
+// @Param limit query int false "Лимит записей (по умолчанию 10)"
+// @Param offset query int false "Смещение (по умолчанию 0)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "Неверные параметры запроса"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions [get]
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	userID := c.Query("user_id")
 	serviceName := c.Query("service_name")
@@ -210,6 +272,18 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	})
 }
 
+// AggregateSubscriptions
+// @Summary Подсчет суммарной стоимости подписок за период
+// @Tags subscriptions
+// @Produce json
+// @Param user_id query string false "Фильтр по ID пользователя"
+// @Param service_name query string false "Фильтр по названию сервиса"
+// @Param start_date query string true "Начало периода (YYYY-MM-DD)"
+// @Param end_date query string true "Конец периода (YYYY-MM-DD)"
+// @Success 200 {object} model.AggregateResponse
+// @Failure 400 {object} map[string]interface{} "Неверные параметры запроса"
+// @Failure 500 {object} map[string]interface{} "Внутренняя ошибка сервера"
+// @Router /api/v1/subscriptions/aggregate [get]
 func (h *SubscriptionHandler) AggregateSubscriptions(c *gin.Context) {
 	var req model.AggregateRequest
 	if err := c.ShouldBindQuery(&req); err != nil {

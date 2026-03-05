@@ -20,6 +20,24 @@ services:
     networks:
       - subscription-network
 
+  migrate:
+    image: migrate/migrate
+    container_name: subscription-migrate
+    command: 
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      - "up"
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - subscription-network
+    restart: "no"
+
   app:
     build:
       context: .
@@ -37,8 +55,8 @@ services:
       POSTGRES_SSL: ${POSTGRES_SSL:-disable}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - subscription-network
 
